@@ -1,0 +1,56 @@
+# One command: `docker compose up --build` (or `docker-compose up --build`)
+#   Customer app + dashboard  → http://localhost:3000
+#   API                       → http://localhost:4000/api/health
+# Configuration comes from .env (copy .env.example). Without an API key the app
+# still runs end to end using the offline mock AI provider.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: refunddesk
+      POSTGRES_PASSWORD: refunddesk
+      POSTGRES_DB: refunddesk
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U refunddesk -d refunddesk"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    environment:
+      PORT: 4000
+      DATABASE_URL: postgres://refunddesk:refunddesk@db:5432/refunddesk
+      CORS_ORIGIN: http://localhost:3000,http://localhost:5173
+      AI_PROVIDER: ${AI_PROVIDER:-auto}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-haiku-4-5-20251001}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-20000}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-demo-admin-token}
+      SESSION_SECRET: ${SESSION_SECRET:-local-demo-session-secret-change-in-production}
+      DEMO_MODE: ${DEMO_MODE:-true}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-4000}:4000"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-3000}:80"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
